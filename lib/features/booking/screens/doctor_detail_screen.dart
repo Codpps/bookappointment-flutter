@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:bootstrap_icons/bootstrap_icons.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+
 import '../../../data/models/doctor_model.dart';
 import '../../../core/constants/api_constants.dart';
 import 'make_appointment_screen.dart';
 import '../../../data/services/doctor_service.dart';
+
 
 class DoctorDetailScreen extends StatefulWidget {
   final int doctorId;
@@ -83,30 +85,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Reviews',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              Row(
-                children: [
-                  const Icon(BootstrapIcons.star_fill,
-                      color: Colors.amber, size: 18),
-                  const SizedBox(width: 6),
-                  Text(
-                    rating.toStringAsFixed(1),
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    ' ($reviewCount)',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          _buildReviewHeader(reviewCount, rating),
           const SizedBox(height: 12),
           const Text(
             'No reviews yet',
@@ -119,103 +98,11 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Reviews',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            Row(
-              children: [
-                const Icon(BootstrapIcons.star_fill,
-                    color: Colors.amber, size: 18),
-                const SizedBox(width: 6),
-                Text(
-                  rating.toStringAsFixed(1),
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  ' ($reviewCount review${reviewCount > 1 ? 's' : ''})',
-                  style: const TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          ],
-        ),
+        _buildReviewHeader(reviewCount, rating),
         const SizedBox(height: 12),
         ...reviews.take(3).map((review) {
-          return Container(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: Colors.blue.shade100,
-                      child: Text(
-                        review.patientName.isNotEmpty
-                            ? review.patientName[0].toUpperCase()
-                            : 'A',
-                        style: TextStyle(
-                          color: Colors.blue.shade700,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            review.patientName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              _buildStarRating(review.rating),
-                              const SizedBox(width: 8),
-                              Text(
-                                _getTimeAgo(review.createdAt),
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if (review.comment.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    review.comment,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          );
-        }).toList(),
+          return _buildReviewCard(review);
+        }),
         if (reviews.length > 3)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -237,40 +124,142 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     );
   }
 
+  Widget _buildReviewHeader(int reviewCount, double rating) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text(
+          'Reviews',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        Row(
+          children: [
+            const Icon(BootstrapIcons.star_fill, color: Colors.amber, size: 18),
+            const SizedBox(width: 6),
+            Text(
+              rating.toStringAsFixed(1),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Text(
+              ' ($reviewCount review${reviewCount > 1 ? 's' : ''})',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReviewCard(Review review) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.blue.shade100,
+                child: Text(
+                  review.patientName.isNotEmpty
+                      ? review.patientName[0].toUpperCase()
+                      : 'A',
+                  style: TextStyle(
+                    color: Colors.blue.shade700,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      review.patientName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        _buildStarRating(review.rating),
+                        const SizedBox(width: 8),
+                        Text(
+                          _getTimeAgo(review.createdAt),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (review.comment.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              review.comment,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        centerTitle: true,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          "Doctor Detail",
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
+    return FutureBuilder<Doctor>(
+      future: _doctorFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        } else if (snapshot.hasError) {
+          return Scaffold(
+              body: Center(child: Text('Error: ${snapshot.error}')));
+        } else if (!snapshot.hasData) {
+          return const Scaffold(
+              body: Center(child: Text('No doctor data found')));
+        }
+
+        final doctor = snapshot.data!;
+
+        return Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            centerTitle: true,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: const Text(
+              "Doctor Detail",
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.black,
+              ),
+            ),
           ),
-        ),
-      ),
-      body: FutureBuilder<Doctor>(
-        future: _doctorFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          } else if (!snapshot.hasData) {
-            return const Center(child: Text('No doctor data found'));
-          }
-
-          final doctor = snapshot.data!;
-
-          return ListView(
+          body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
               // Doctor Info
@@ -357,7 +346,6 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                 ),
                 child: Row(
                   children: [
-                    // Hospital
                     Expanded(
                       child: Row(
                         children: [
@@ -389,16 +377,12 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                         ],
                       ),
                     ),
-
-                    // Divider
                     Container(
                       height: 50,
                       width: 1,
                       color: Colors.grey.shade300,
                       margin: const EdgeInsets.symmetric(horizontal: 16),
                     ),
-
-                    // Schedule
                     Expanded(
                       child: Row(
                         children: [
@@ -406,25 +390,14 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                               color: Colors.blue, size: 26),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Work Hour',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _formatSchedule(doctor.schedules),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
+                            child: Text(
+                              _formatSchedule(doctor.schedules),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
                             ),
                           ),
                         ],
@@ -436,46 +409,27 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
 
               const SizedBox(height: 20),
 
-              // Biography
-              const Text(
-                'Biography',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
+              const Text('Biography',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               Text(
                 doctor.biography.isNotEmpty
                     ? doctor.biography
                     : 'No biography available.',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black87,
-                ),
+                style: const TextStyle(fontSize: 14, color: Colors.black87),
               ),
 
               const SizedBox(height: 20),
 
-              // Location
-              const Text(
-                'Work Location',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
+              const Text('Work Location',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               Text(
                 doctor.providerAddress,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black87,
-                ),
+                style: const TextStyle(fontSize: 14, color: Colors.black87),
               ),
               const SizedBox(height: 12),
 
-              // Map
               Container(
                 height: 160,
                 decoration: BoxDecoration(
@@ -523,23 +477,11 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
 
               const SizedBox(height: 20),
 
-              // Reviews Section
               _buildReviewsSection(
                   doctor.reviews, doctor.reviewCount, doctor.rating),
             ],
-          );
-        },
-      ),
-
-      // Bottom buttons
-      bottomNavigationBar: FutureBuilder<Doctor>(
-        future: _doctorFuture,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const SizedBox.shrink();
-
-          final doctor = snapshot.data!;
-
-          return Container(
+          ),
+          bottomNavigationBar: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -553,7 +495,6 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
             ),
             child: Row(
               children: [
-                // Make Appointment
                 Expanded(
                   flex: 8,
                   child: ElevatedButton(
@@ -561,8 +502,14 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              MakeAppointmentScreen(doctorId: doctor.doctorId),
+                          builder: (_) => MakeAppointmentScreen(
+                            doctorId: doctor.doctorId,
+                            doctorName: doctor.fullName,
+                            doctorSpecialization: doctor.specializationName,
+                            doctorPhoto: doctor.photo,
+                            doctorRating: doctor.rating,
+                            consultationFee: doctor.consultationFee,
+                          ),
                         ),
                       );
                     },
@@ -582,10 +529,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(width: 12),
-
-                // Chat
                 Expanded(
                   flex: 2,
                   child: OutlinedButton(
@@ -611,9 +555,9 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                 ),
               ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

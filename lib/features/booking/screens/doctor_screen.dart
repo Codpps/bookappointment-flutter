@@ -6,6 +6,7 @@ import '../../../core/constants/api_constants.dart';
 import 'doctor_detail_screen.dart';
 import '../widgets/search_bar.dart';
 
+
 class DoctorScreen extends StatefulWidget {
   final String specialty;
   final int specializationId;

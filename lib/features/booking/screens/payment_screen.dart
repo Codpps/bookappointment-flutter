@@ -1,22 +1,35 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:bootstrap_icons/bootstrap_icons.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
 import 'payment_success.dart';
+import '../../../core/constants/api_constants.dart';
+
 
 class PaymentScreen extends StatefulWidget {
   final int doctorId;
+  final String doctorName;
+  final String doctorSpecialization;
+  final String doctorPhoto;
+  final double doctorRating;
+  final double consultationFee;
   final String appointmentTime;
   final DateTime appointmentDate;
   final TimeOfDay selectedTime;
 
-
   const PaymentScreen({
-    Key? key,
+    super.key,
     required this.doctorId,
+    required this.doctorName,
+    required this.doctorSpecialization,
+    required this.doctorPhoto,
+    required this.doctorRating,
+    required this.consultationFee,
     required this.appointmentTime,
-    required this.selectedTime,
     required this.appointmentDate,
-  }) : super(key: key);
+    required this.selectedTime,
+  });
 
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
@@ -24,34 +37,108 @@ class PaymentScreen extends StatefulWidget {
 
 class _PaymentScreenState extends State<PaymentScreen> {
   String selectedPayment = 'visa';
+  final TextEditingController notesController = TextEditingController();
+
+  // ganti sesuai base url backend kamu
+  final String baseUrl = ApiConstants.baseUrl;
 
   final Map<String, String> paymentMethods = {
     'visa':
-        'https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg',
+        'https://tse1.mm.bing.net/th/id/OIP.5n0JmezFeOK4F7yptVeZawHaEK?pid=Api&P=0&h=180',
     'bca':
-        'https://upload.wikimedia.org/wikipedia/commons/1/1f/BANK_BCA_logo.svg',
+        'https://tse3.mm.bing.net/th/id/OIP.uo8UN5fQ9nxpcsWKUpzV0AHaHa?pid=Api&P=0&h=180',
     'mandiri':
-        'https://upload.wikimedia.org/wikipedia/id/0/04/Logo_Bank_Mandiri.svg',
+        'https://tse4.mm.bing.net/th/id/OIP.L2HwHrcAI66hMbOuhvYH-wHaFj?pid=Api&P=0&h=180',
   };
 
-  void _handlePayment() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PaymentSuccessScreen(
-          doctorId: widget.doctorId,
-          appointmentDate: widget.appointmentDate,
-          appointmentTime: widget.appointmentTime,
-          paymentMethod: selectedPayment,
-        ),
-      ),
+  Future<void> handlePayment() async {
+    final appointmentDateTime = DateTime(
+      widget.appointmentDate.year,
+      widget.appointmentDate.month,
+      widget.appointmentDate.day,
+      widget.selectedTime.hour,
+      widget.selectedTime.minute,
     );
+
+    final endTime = appointmentDateTime.add(const Duration(minutes: 30));
+
+    final Map<String, dynamic> body = {
+      "userId": 9, // TODO: ganti dengan user login
+      "doctorId": widget.doctorId,
+      "appointmentDate": appointmentDateTime.toIso8601String(),
+      "appointmentTime":
+          "${widget.selectedTime.hour.toString().padLeft(2, '0')}:${widget.selectedTime.minute.toString().padLeft(2, '0')}:00",
+      "endTime":
+          "${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}:00",
+      "status": "Scheduled",
+      "patientNotes":
+          notesController.text.isEmpty ? "No notes" : notesController.text,
+      "doctorNotes": null,
+      "consultationFee": widget.consultationFee.toInt(),
+      "queueNumber":
+          "D${widget.doctorId}-${appointmentDateTime.month.toString().padLeft(2, '0')}${appointmentDateTime.day.toString().padLeft(2, '0')}-1",
+      "symptoms": "Ear, Nose & Throat",
+      "isActive": true,
+      "createdAt": DateTime.now().toIso8601String(),
+      "updatedAt": DateTime.now().toIso8601String(),
+    };
+
+    try {
+      final String url = "${ApiConstants.baseUrl}/Appointments";
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // In the handlePayment method, replace the navigation with:
+if (!mounted) return;
+Navigator.push(
+  context,
+  MaterialPageRoute(
+    builder: (context) => PaymentSuccessScreen(
+      doctorId: widget.doctorId,
+      doctorName: widget.doctorName,
+      doctorSpecialization: widget.doctorSpecialization,
+      doctorPhoto: widget.doctorPhoto,
+      doctorRating: widget.doctorRating,
+      appointmentDate: widget.appointmentDate,
+      selectedTime: widget.selectedTime,
+      paymentMethod: selectedPayment,
+    ),
+  ),
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Payment failed: ${response.body}")),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final appointmentDateTime = DateTime(
+      widget.appointmentDate.year,
+      widget.appointmentDate.month,
+      widget.appointmentDate.day,
+      widget.selectedTime.hour,
+      widget.selectedTime.minute,
+    );
+
     String formattedDate =
-        DateFormat('EEEE, MMM d • hh:mm a').format(widget.appointmentDate);
+        DateFormat('EEEE, MMM d').format(appointmentDateTime);
+    String formattedTime = DateFormat('hh:mm a').format(appointmentDateTime);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -68,9 +155,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
+          onPressed: () => Navigator.of(context).pop(),
         ),
       ),
       body: Column(
@@ -79,57 +164,55 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // doctor info
                 Row(
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.network(
-                        'https://i.pravatar.cc/100?img=12',
-                        width: 64,
-                        height: 64,
+                        "${ApiConstants.baseUrl.replaceAll('/api', '')}/images/doctors/${widget.doctorPhoto}",
+                        width: 72,
+                        height: 72,
                         fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          width: 72,
+                          height: 72,
+                          color: Colors.grey[200],
+                          child: const Icon(Icons.person, size: 40),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Column(
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Icon(BootstrapIcons.star_fill,
+                            const Icon(BootstrapIcons.star_fill,
                                 color: Colors.amber, size: 16),
-                            SizedBox(width: 4),
-                            Text('4.5',
-                                style: TextStyle(fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 4),
+                            Text(widget.doctorRating.toStringAsFixed(1),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
                           ],
                         ),
-                        SizedBox(height: 4),
-                        Text('Dr. Stone Gaze',
-                            style: TextStyle(
+                        const SizedBox(height: 4),
+                        Text(widget.doctorName,
+                            style: const TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 16)),
-                        SizedBox(height: 4),
-                        Text('Ear, Nose & Throat specialist'),
+                        const SizedBox(height: 4),
+                        Text(widget.doctorSpecialization),
                       ],
                     )
                   ],
                 ),
+
                 const SizedBox(height: 20),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Schedule Date',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    Row(
-                      children: [
-                        Icon(BootstrapIcons.pencil, size: 16),
-                        SizedBox(width: 4),
-                        Text('Edit', style: TextStyle(fontSize: 14)),
-                      ],
-                    ),
-                  ],
+
+                // Schedule section
+                const Text(
+                  'Schedule Date',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 12),
                 Container(
@@ -163,7 +246,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            '$formattedDate • ${widget.appointmentTime}',
+                            '$formattedDate • $formattedTime',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 18,
@@ -183,19 +266,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 24),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Select Payment Method',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    Text('See all',
-                        style: TextStyle(
-                            color: Colors.blue, fontWeight: FontWeight.w500)),
-                  ],
+
+                // Payment methods
+                const Text(
+                  'Select Payment Method',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 12),
                 ...paymentMethods.entries.map((entry) {
@@ -270,18 +347,40 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       ),
                     ),
                   );
-                }).toList(),
+                }),
+
                 const SizedBox(height: 24),
+
+                // Patient Notes
+                const Text(
+                  "Patient Notes",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: notesController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: "Enter your symptoms or notes...",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Payment summary
                 const Text(
                   'Payment Summary',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 12),
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Consultation Fee'),
-                    Text('IDR 120.000'),
+                    const Text('Consultation Fee'),
+                    Text('IDR ${widget.consultationFee.toStringAsFixed(0)}'),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -296,6 +395,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ],
             ),
           ),
+
+          // Bottom bar
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -312,20 +413,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: SafeArea(
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
+                        const Text(
                           'Total',
                           style: TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 16),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'IDR 120.000',
-                          style: TextStyle(
+                          'IDR ${widget.consultationFee.toStringAsFixed(0)}',
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 18,
                             color: Colors.blue,
@@ -338,7 +439,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     width: MediaQuery.of(context).size.width * 0.35,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: _handlePayment,
+                      onPressed: handlePayment,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         shape: RoundedRectangleBorder(

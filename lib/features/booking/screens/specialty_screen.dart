@@ -6,6 +6,7 @@ import '../../../data/models/specialization_model.dart';
 import '../../../data/services/specialization_service.dart';
 import '../../../core/constants/api_constants.dart';
 
+
 class SpecialtyListScreen extends StatefulWidget {
   const SpecialtyListScreen({super.key});
 

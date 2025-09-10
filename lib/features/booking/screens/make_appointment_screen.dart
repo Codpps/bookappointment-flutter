@@ -1,14 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:bootstrap_icons/bootstrap_icons.dart';
-import '../../../data/models/doctor_schedule_model.dart';
 import '../../../data/services/doctor_schedule_service.dart';
 import 'payment_screen.dart';
 
+
 class MakeAppointmentScreen extends StatefulWidget {
   final int doctorId;
+  final String doctorName;
+  final String doctorSpecialization;
+  final String doctorPhoto;
+  final double doctorRating;
+  final double consultationFee;
 
-  const MakeAppointmentScreen({super.key, required this.doctorId});
+  const MakeAppointmentScreen({
+    Key? key,
+    required this.doctorId,
+    required this.doctorName,
+    required this.doctorSpecialization,
+    required this.doctorPhoto,
+    required this.doctorRating,
+    required this.consultationFee,
+  }) : super(key: key);
 
   @override
   State<MakeAppointmentScreen> createState() => _MakeAppointmentScreenState();
@@ -17,10 +30,9 @@ class MakeAppointmentScreen extends StatefulWidget {
 class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
   int selectedDateIndex = 0;
   String? selectedTime;
-  List<DateTime> availableDates = [];
   List<DateTime> allDates = [];
-  Set<int> availableWeekdays = {};
-  Map<String, List<String>> timeSlots = {};
+  Map<String, List<String>> timeSlots =
+      {}; // key: yyyy-MM-dd -> list of "HH:mm"
   List<String> morningTimes = [];
   List<String> afternoonTimes = [];
   bool isLoading = true;
@@ -38,85 +50,62 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
       final service = DoctorScheduleService();
       final schedules = await service.fetchDoctorSchedules(widget.doctorId);
 
-      // Debug print to check raw API data
-      print('Raw API Response:');
-      print(schedules
-          .map((s) => '${s.dayOfWeek}: ${s.startTime}-${s.endTime}')
-          .toList());
-
       final activeSchedules = schedules.where((s) => s.isActive).toList();
-
-      // Debug print active schedules
-      print('Active Schedules:');
-      activeSchedules.forEach((s) {
-        print(
-            '${s.dayOfWeek} (${_dayToWeekday(s.dayOfWeek)}): ${s.startTime}-${s.endTime}');
-      });
 
       final Map<String, List<String>> groupedSlots = {};
       final Set<DateTime> availableDateSet = {};
-      final Set<int> weekdays = {};
 
-      // Generate dates for next 4 weeks
-      DateTime now = DateTime.now();
-      List<DateTime> allDatesList = [];
-      for (int i = 0; i < 28; i++) {
-        allDatesList.add(now.add(Duration(days: i)));
-      }
+      // Generate next 28 days (today .. +27)
+      final now = DateTime.now();
+      final List<DateTime> allDatesList = List.generate(
+        28,
+        (i) => DateTime(now.year, now.month, now.day).add(Duration(days: i)),
+      );
 
-      // Process each schedule
+      // Build slots per date based on schedules
       for (var schedule in activeSchedules) {
-        final day = _dayToWeekday(schedule.dayOfWeek);
-        weekdays.add(day);
-
+        final weekday = _dayToWeekday(schedule.dayOfWeek);
         final slots = _generateTimeSlots(
             schedule.startTime, schedule.endTime, schedule.slotDuration);
 
-        // Apply to all matching dates
-        for (DateTime date in allDatesList) {
-          if (date.weekday == day) {
+        for (final date in allDatesList) {
+          if (date.weekday == weekday) {
             availableDateSet.add(date);
-            String dateKey = DateFormat('yyyy-MM-dd').format(date);
+            final dateKey = DateFormat('yyyy-MM-dd').format(date);
             groupedSlots.putIfAbsent(dateKey, () => []);
             groupedSlots[dateKey]!.addAll(slots);
           }
         }
       }
 
-      // Debug print generated slots
-      print('Generated Time Slots:');
+      // Remove duplicates and sort slot lists
       groupedSlots.forEach((date, times) {
-        print('$date: $times');
+        final uniqueSorted = times.toSet().toList()..sort();
+        groupedSlots[date] = uniqueSorted;
       });
 
-      // Remove duplicates and sort time slots
-      groupedSlots.forEach((date, times) {
-        groupedSlots[date] = times.toSet().toList()..sort();
-      });
+      // pick initial selectedDateIndex: first date in allDatesList that exists in groupedSlots
+      int initialIndex = 0;
+      for (int i = 0; i < allDatesList.length; i++) {
+        final key = DateFormat('yyyy-MM-dd').format(allDatesList[i]);
+        if (groupedSlots.containsKey(key)) {
+          initialIndex = i;
+          break;
+        }
+      }
 
       setState(() {
         allDates = allDatesList;
-        availableDates = availableDateSet.toList()..sort();
-        availableWeekdays = weekdays;
         timeSlots = groupedSlots;
+        selectedDateIndex = initialIndex;
         isLoading = false;
-
-        // Set first available date as selected
-        if (availableDates.isNotEmpty) {
-          for (int i = 0; i < allDates.length; i++) {
-            if (availableDateSet.any((availableDate) =>
-                DateFormat('yyyy-MM-dd').format(allDates[i]) ==
-                DateFormat('yyyy-MM-dd').format(availableDate))) {
-              selectedDateIndex = i;
-              break;
-            }
-          }
-          _splitTimes();
-        }
       });
+
+      // populate morning/afternoon after state updated
+      _splitTimes();
     } catch (e) {
-      setState(() => isLoading = false);
       if (mounted) {
+        setState(() => isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading schedules: $e')),
         );
@@ -124,16 +113,19 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
     }
   }
 
+  /// Generate time slots from start to end using a stable reference date (year 2000)
   List<String> _generateTimeSlots(
       String startTime, String endTime, int slotDuration) {
     final List<String> slots = [];
+
     final startParts = startTime.split(':');
     final endParts = endTime.split(':');
 
-    DateTime start = DateTime(
-        2024, 1, 1, int.parse(startParts[0]), int.parse(startParts[1]));
-    DateTime end =
-        DateTime(2024, 1, 1, int.parse(endParts[0]), int.parse(endParts[1]));
+    // Use a reference year (2000) to avoid real year issues
+    final start = DateTime(
+        2000, 1, 1, int.parse(startParts[0]), int.parse(startParts[1]));
+    final end =
+        DateTime(2000, 1, 1, int.parse(endParts[0]), int.parse(endParts[1]));
 
     DateTime current = start;
     while (current.isBefore(end)) {
@@ -145,42 +137,75 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
   }
 
   void _splitTimes() {
-    morningTimes = [];
-    afternoonTimes = [];
+    // This reads timeSlots using selectedDateIndex and updates morningTimes & afternoonTimes
+    if (!mounted) return;
 
-    if (allDates.isEmpty || selectedDateIndex >= allDates.length) return;
+    final newMorning = <String>[];
+    final newAfternoon = <String>[];
+
+    if (allDates.isEmpty ||
+        selectedDateIndex < 0 ||
+        selectedDateIndex >= allDates.length) {
+      setState(() {
+        morningTimes = newMorning;
+        afternoonTimes = newAfternoon;
+      });
+      return;
+    }
 
     final selectedDate = allDates[selectedDateIndex];
     final dateKey = DateFormat('yyyy-MM-dd').format(selectedDate);
 
-    if (!timeSlots.containsKey(dateKey)) return;
-
     final times = timeSlots[dateKey] ?? [];
-    for (var time in times) {
-      final hour = int.tryParse(time.split(":")[0]) ?? 0;
+
+    for (final t in times) {
+      final hour = int.tryParse(t.split(':')[0]) ?? 0;
       if (hour < 12) {
-        morningTimes.add(time);
+        newMorning.add(t);
       } else {
-        afternoonTimes.add(time);
+        newAfternoon.add(t);
       }
     }
+
+    newMorning.sort();
+    newAfternoon.sort();
+
+    setState(() {
+      morningTimes = newMorning;
+      afternoonTimes = newAfternoon;
+      // reset selectedTime if it's not in new list
+      if (selectedTime != null &&
+          !(morningTimes.contains(selectedTime) ||
+              afternoonTimes.contains(selectedTime))) {
+        selectedTime = null;
+      }
+    });
   }
 
   int _dayToWeekday(String day) {
-    final lowerDay = day.toLowerCase();
-    if (lowerDay == 'monday' || lowerDay == 'senin') return DateTime.monday;
-    if (lowerDay == 'tuesday' || lowerDay == 'selasa') return DateTime.tuesday;
-    if (lowerDay == 'wednesday' || lowerDay == 'rabu')
+    final lower = day.toLowerCase();
+    if (lower.contains('monday') || lower.contains('senin'))
+      return DateTime.monday;
+    if (lower.contains('tuesday') || lower.contains('selasa'))
+      return DateTime.tuesday;
+    if (lower.contains('wednesday') || lower.contains('rabu'))
       return DateTime.wednesday;
-    if (lowerDay == 'thursday' || lowerDay == 'kamis') return DateTime.thursday;
-    if (lowerDay == 'friday' || lowerDay == 'jumat') return DateTime.friday;
-    if (lowerDay == 'saturday' || lowerDay == 'sabtu') return DateTime.saturday;
-    if (lowerDay == 'sunday' || lowerDay == 'minggu') return DateTime.sunday;
-    return DateTime.monday; // Default fallback
+    if (lower.contains('thursday') || lower.contains('kamis'))
+      return DateTime.thursday;
+    if (lower.contains('friday') ||
+        lower.contains('jumat') ||
+        lower.contains('selasa')) return DateTime.friday;
+    if (lower.contains('saturday') || lower.contains('sabtu'))
+      return DateTime.saturday;
+    if (lower.contains('sunday') || lower.contains('minggu'))
+      return DateTime.sunday;
+    return DateTime.monday;
   }
 
   void _confirmAppointment() {
-    if (selectedTime == null || selectedDateIndex >= allDates.length) return;
+    if (selectedTime == null ||
+        selectedDateIndex < 0 ||
+        selectedDateIndex >= allDates.length) return;
 
     final selectedDate = allDates[selectedDateIndex];
     final appointmentDateTime = DateTime(
@@ -191,13 +216,24 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
       int.parse(selectedTime!.split(':')[1]),
     );
 
+    final timeOfDay = TimeOfDay(
+      hour: int.parse(selectedTime!.split(':')[0]),
+      minute: int.parse(selectedTime!.split(':')[1]),
+    );
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PaymentScreen(
           doctorId: widget.doctorId,
+          doctorName: widget.doctorName,
+          doctorSpecialization: widget.doctorSpecialization,
+          doctorPhoto: widget.doctorPhoto,
+          doctorRating: widget.doctorRating,
+          consultationFee: widget.consultationFee,
           appointmentDate: appointmentDateTime,
-          selectedTime: selectedTime!,
+          appointmentTime: selectedTime!,
+          selectedTime: timeOfDay,
         ),
       ),
     );
@@ -230,16 +266,9 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
           ? const Center(child: CircularProgressIndicator())
           : allDates.isEmpty
               ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.calendar_today, size: 64, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text(
-                        'No available appointments',
-                        style: TextStyle(fontSize: 18, color: Colors.grey),
-                      ),
-                    ],
+                  child: Text(
+                    'No available appointments',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
                   ),
                 )
               : Column(
@@ -255,21 +284,6 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
                               style: TextStyle(
                                   fontSize: 20, fontWeight: FontWeight.w700),
                             ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              "You can choose the date and time from the available doctor's schedule",
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.black54,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              'Choose Day, ${DateFormat('MMMM yyyy').format(allDates[selectedDateIndex])}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 16),
-                            ),
                             const SizedBox(height: 12),
                             SizedBox(
                               height: 110,
@@ -283,9 +297,6 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
                                       DateFormat('yyyy-MM-dd').format(date);
                                   final isAvailable =
                                       timeSlots.containsKey(dateKey);
-                                  final isToday = dateKey ==
-                                      DateFormat('yyyy-MM-dd')
-                                          .format(DateTime.now());
 
                                   return GestureDetector(
                                     onTap: isAvailable
@@ -293,86 +304,55 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
                                             setState(() {
                                               selectedDateIndex = index;
                                               selectedTime = null;
-                                              _splitTimes();
                                             });
+                                            _splitTimes();
                                           }
                                         : null,
                                     child: Container(
                                       width: 90,
                                       margin: const EdgeInsets.only(right: 12),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 10),
                                       decoration: BoxDecoration(
-                                        color: !isAvailable
-                                            ? Colors.grey.shade100
-                                            : isSelected
-                                                ? Colors.blue
-                                                : Colors.white,
+                                        color: isSelected
+                                            ? Colors.blue
+                                            : Colors.white,
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                          color: !isAvailable
-                                              ? Colors.grey.shade300
-                                              : isSelected
-                                                  ? Colors.blue
-                                                  : Colors.grey.shade300,
-                                        ),
+                                            color: isSelected
+                                                ? Colors.blue
+                                                : Colors.grey.shade300),
                                       ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Text(
-                                            DateFormat('E').format(date),
-                                            style: TextStyle(
-                                              color: !isAvailable
-                                                  ? Colors.grey.shade400
-                                                  : isSelected
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              DateFormat('E').format(date),
+                                              style: TextStyle(
+                                                  color: isSelected
                                                       ? Colors.white
-                                                      : Colors.black,
-                                              fontSize: 12,
+                                                      : Colors.black),
                                             ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            DateFormat('d').format(date),
-                                            style: TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                              color: !isAvailable
-                                                  ? Colors.grey.shade400
-                                                  : isSelected
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              DateFormat('d').format(date),
+                                              style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isSelected
                                                       ? Colors.white
-                                                      : Colors.black,
+                                                      : Colors.black),
                                             ),
-                                          ),
-                                          if (isToday) ...[
                                             const SizedBox(height: 4),
                                             Text(
-                                              'Today',
+                                              DateFormat('MMM').format(date),
                                               style: TextStyle(
-                                                fontSize: 10,
-                                                color: !isAvailable
-                                                    ? Colors.grey.shade400
-                                                    : isSelected
-                                                        ? Colors.white
-                                                        : Colors.blue,
-                                                fontWeight: FontWeight.w500,
-                                              ),
+                                                  color: isSelected
+                                                      ? Colors.white70
+                                                      : Colors.black54,
+                                                  fontSize: 12),
                                             ),
                                           ],
-                                          if (!isAvailable) ...[
-                                            const SizedBox(height: 4),
-                                            const Text(
-                                              'N/A',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.grey,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   );
@@ -414,20 +394,16 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
                                             : Colors.white,
                                         borderRadius: BorderRadius.circular(25),
                                         border: Border.all(
-                                          color: isSelected
-                                              ? Colors.blue
-                                              : Colors.grey.shade300,
-                                        ),
+                                            color: isSelected
+                                                ? Colors.blue
+                                                : Colors.grey.shade300),
                                       ),
-                                      child: Text(
-                                        time,
-                                        style: TextStyle(
-                                          color: isSelected
-                                              ? Colors.white
-                                              : Colors.black,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
+                                      child: Text(time,
+                                          style: TextStyle(
+                                              color: isSelected
+                                                  ? Colors.white
+                                                  : Colors.black,
+                                              fontWeight: FontWeight.w500)),
                                     ),
                                   );
                                 }).toList(),
@@ -468,20 +444,16 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
                                             : Colors.white,
                                         borderRadius: BorderRadius.circular(25),
                                         border: Border.all(
-                                          color: isSelected
-                                              ? Colors.blue
-                                              : Colors.grey.shade300,
-                                        ),
+                                            color: isSelected
+                                                ? Colors.blue
+                                                : Colors.grey.shade300),
                                       ),
-                                      child: Text(
-                                        time,
-                                        style: TextStyle(
-                                          color: isSelected
-                                              ? Colors.white
-                                              : Colors.black,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
+                                      child: Text(time,
+                                          style: TextStyle(
+                                              color: isSelected
+                                                  ? Colors.white
+                                                  : Colors.black,
+                                              fontWeight: FontWeight.w500)),
                                     ),
                                   );
                                 }).toList(),
@@ -497,13 +469,7 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
                                         size: 48, color: Colors.grey),
                                     const SizedBox(height: 16),
                                     Text(
-                                      selectedDateIndex < allDates.length &&
-                                              !timeSlots.containsKey(
-                                                  DateFormat('yyyy-MM-dd')
-                                                      .format(allDates[
-                                                          selectedDateIndex]))
-                                          ? 'Doctor not available on this day'
-                                          : 'No available time slots',
+                                      'No available time slots for the selected date',
                                       style: const TextStyle(
                                           fontSize: 16, color: Colors.grey),
                                     ),
@@ -516,83 +482,19 @@ class _MakeAppointmentScreenState extends State<MakeAppointmentScreen> {
                     ),
                     Container(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            spreadRadius: 1,
-                            blurRadius: 10,
-                            offset: const Offset(0, -5),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (selectedTime != null &&
-                              selectedDateIndex < allDates.length)
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              margin: const EdgeInsets.only(bottom: 12),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.event, color: Colors.blue),
-                                  const SizedBox(width: 12),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        DateFormat('EEEE, MMM d, yyyy').format(
-                                            allDates[selectedDateIndex]),
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600),
-                                      ),
-                                      Text(
-                                        'at $selectedTime',
-                                        style:
-                                            const TextStyle(color: Colors.blue),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: selectedTime == null
-                                  ? null
-                                  : _confirmAppointment,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: selectedTime == null
-                                    ? Colors.grey
-                                    : Colors.blue,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12)),
-                                elevation: selectedTime == null ? 0 : 2,
-                              ),
-                              child: Text(
-                                selectedTime == null
-                                    ? 'Select a time slot'
-                                    : 'Confirm Appointment',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: ElevatedButton(
+                        onPressed:
+                            selectedTime == null ? null : _confirmAppointment,
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                          backgroundColor:
+                              selectedTime == null ? Colors.grey : Colors.blue,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: Text(selectedTime == null
+                            ? "Select a time slot"
+                            : "Confirm Appointment"),
                       ),
                     ),
                   ],
